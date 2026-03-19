@@ -46,48 +46,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // --- Trial check for authenticated users ---
-  if (user && pathname.startsWith("/dashboard")) {
-    try {
-      const { data: subscription } = await supabase
-        .from("subscriptions")
-        .select("status, trial_ends_at")
-        .eq("user_id", user.id)
-        .single();
-
-      if (subscription) {
-        const isExpired =
-          subscription.status === "expired" ||
-          subscription.status === "suspended" ||
-          (subscription.status === "trialing" &&
-            new Date(subscription.trial_ends_at) < new Date());
-
-        if (isExpired) {
-          // Update status to expired if it was still trialing
-          if (subscription.status === "trialing") {
-            await supabase
-              .from("subscriptions")
-              .update({
-                status: "expired",
-                updated_at: new Date().toISOString(),
-                delete_after_at: new Date(
-                  Date.now() + 30 * 24 * 60 * 60 * 1000
-                ).toISOString(),
-              })
-              .eq("user_id", user.id);
-          }
-
-          const expiredUrl = request.nextUrl.clone();
-          expiredUrl.pathname = "/trial-expired";
-          return NextResponse.redirect(expiredUrl);
-        }
-      }
-      // If no subscription found, allow access (demo/mock mode)
-    } catch {
-      // If DB tables don't exist yet, allow access gracefully
-    }
-  }
-
   // --- Security: add headers ---
   supabaseResponse.headers.set("X-Frame-Options", "DENY");
   supabaseResponse.headers.set("X-Content-Type-Options", "nosniff");
