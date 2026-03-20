@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Package, Car, Bell, Wrench } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,26 +22,18 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (authError) {
-        setError("Credenciales incorrectas. Verifica tu email y contraseña.");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Credenciales incorrectas. Verifica tu email y contraseña.");
         setLoading(false);
         return;
-      }
-
-      // Log login event
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from("audit_logs").insert({
-          user_id: user.id,
-          action: "login",
-          metadata: { email },
-        }).then(() => {});
       }
 
       router.push("/dashboard");

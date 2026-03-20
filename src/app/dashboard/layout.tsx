@@ -1,57 +1,59 @@
 import Sidebar from "@/components/layout/sidebar";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { jwtVerify } from "jose";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const token = cookieStore.get("auth_token")?.value;
 
-  if (!user) {
+  if (!token) {
+    redirect("/login");
+  }
+
+  let userId = null;
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
+    const { payload } = await jwtVerify(token, secret);
+    userId = payload.userId;
+  } catch (error) {
+    console.error("Auth error in layout:", error);
     redirect("/login");
   }
 
   // --- Trial check for authenticated users ---
   try {
-    const { data: subscription } = await supabase
-      .from("subscriptions")
-      .select("status, trial_ends_at")
-      .eq("user_id", user.id)
-      .single();
+    const { rows } = await query(
+      "SELECT status, trial_end_at FROM subscriptions WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    const subscription = rows[0];
 
     if (subscription) {
       const isExpired =
         subscription.status === "expired" ||
-        subscription.status === "suspended" ||
         (subscription.status === "trialing" &&
-          new Date(subscription.trial_ends_at ?? 0) < new Date());
+          new Date(subscription.trial_end_at ?? 0) < new Date());
 
       if (isExpired) {
         // Update status to expired if it was still trialing
         if (subscription.status === "trialing") {
-          await supabase
-            .from("subscriptions")
-            .update({
-              status: "expired",
-              updated_at: new Date().toISOString(),
-              delete_after_at: new Date(
-                Date.now() + 30 * 24 * 60 * 60 * 1000
-              ).toISOString(),
-            })
-            .eq("user_id", user.id);
+          await query(
+            "UPDATE subscriptions SET status = 'expired' WHERE user_id = $1",
+            [userId]
+          );
         }
 
         redirect("/trial-expired");
       }
     }
   } catch (error) {
-    // If DB tables don't exist yet or other error, allow access gracefully
     console.error("Trial check error:", error);
   }
 

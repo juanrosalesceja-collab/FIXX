@@ -1,136 +1,90 @@
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import { NextResponse } from "next/server";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, fullName, tallerName } = body;
+    // Support both 'fullName' (from our form) and 'name' (from user's example)
+    const { email, password, fullName, name, tallerName } = body;
+    const finalName = fullName || name;
 
     // --- Input validation ---
-    if (!email || !password || !fullName || !tallerName) {
+    if (!email || !password || !finalName) {
       return NextResponse.json(
         { error: "Todos los campos son obligatorios." },
         { status: 400 }
       );
     }
 
-    if (password.length < 8) {
+    // --- 1. Check if user already exists ---
+    const existingUser = await query("SELECT id FROM profiles WHERE email = $1", [email]);
+    if (existingUser.rowCount && existingUser.rowCount > 0) {
       return NextResponse.json(
-        { error: "La contraseña debe tener al menos 8 caracteres." },
-        { status: 400 }
+        { error: "Este email ya está registrado." },
+        { status: 409 }
       );
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: "El email no es válido." },
-        { status: 400 }
+    // --- 2. Hash password ---
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // --- 3. Create profile ---
+    // We insert into profiles and get the new ID.
+    // user_id is left NULL initially as we are bypassing Supabase Auth.
+    const profileResult = await query(
+      "INSERT INTO profiles (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id",
+      [finalName, email, passwordHash]
+    );
+    const userId = profileResult.rows[0].id;
+
+    // --- 4. Create workshop (optional) ---
+    if (tallerName) {
+      await query(
+        "INSERT INTO workshops (user_id, workshop_name) VALUES ($1, $2)",
+        [userId, tallerName]
       );
     }
 
-    if (fullName.length > 100 || tallerName.length > 100) {
-      return NextResponse.json(
-        { error: "Los nombres no pueden exceder 100 caracteres." },
-        { status: 400 }
-      );
-    }
+    // --- 5. Create trial subscription (7 days) ---
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + 7);
 
-    const supabase = await createClient();
+    await query(
+      "INSERT INTO subscriptions (user_id, trial_start_at, trial_end_at, status) VALUES ($1, NOW(), $2, $3)",
+      [userId, trialEndDate.toISOString(), "trialing"]
+    );
 
-    // --- 1. Create user in Supabase Auth ---
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          taller_name: tallerName,
-        },
-      },
+    // --- 6. Audit log ---
+    await query(
+      "INSERT INTO audit_logs (user_id, action, metadata) VALUES ($1, $2, $3)",
+      [userId, "register", JSON.stringify({ email })]
+    );
+
+    // --- 7. Generate JWT ---
+    const token = jwt.sign({ userId, email }, process.env.JWT_SECRET!, {
+      expiresIn: "7d",
     });
 
-    if (authError) {
-      // Don't reveal too much about the error
-      if (authError.message.includes("already registered")) {
-        return NextResponse.json(
-          { error: "Este email ya está registrado." },
-          { status: 409 }
-        );
-      }
-      return NextResponse.json(
-        { error: "No se pudo crear la cuenta. Intenta de nuevo." },
-        { status: 500 }
-      );
-    }
-
-    const userId = authData.user?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Error al crear el usuario." },
-        { status: 500 }
-      );
-    }
-
-    // --- 2. Create profile ---
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .insert({
-        id: userId,
-        email,
-        full_name: fullName,
-        role: "owner",
-      });
-
-    if (profileError) {
-      console.error("Profile creation error:", profileError.message);
-    }
-
-    // --- 3. Create workshop ---
-    const { data: workshopData, error: workshopError } = await supabase
-      .from("workshops")
-      .insert({
-        name: tallerName,
-        owner_user_id: userId,
-      })
-      .select("id")
-      .single();
-
-    if (workshopError) {
-      console.error("Workshop creation error:", workshopError.message);
-    }
-
-    // --- 4. Create trial subscription ---
-    const now = new Date();
-    const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    const { error: subError } = await supabase
-      .from("subscriptions")
-      .insert({
-        user_id: userId,
-        workshop_id: workshopData?.id || null,
-        plan_name: "trial",
-        status: "trialing",
-        trial_starts_at: now.toISOString(),
-        trial_ends_at: trialEnd.toISOString(),
-      });
-
-    if (subError) {
-      console.error("Subscription creation error:", subError.message);
-    }
-
-    // --- 5. Audit log ---
-    await supabase.from("audit_logs").insert({
-      user_id: userId,
-      action: "register",
-      metadata: { email, taller: tallerName },
-    });
-
-    return NextResponse.json(
-      { message: "Cuenta creada exitosamente.", userId },
+    const response = NextResponse.json(
+      { message: "Usuario registrado exitosamente", userId },
       { status: 201 }
     );
-  } catch {
+
+    // Set cookie
+    response.cookies.set("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: "/",
+    });
+
+    return response;
+  } catch (error) {
+    console.error("Registration error:", error);
     return NextResponse.json(
       { error: "Error interno del servidor." },
       { status: 500 }

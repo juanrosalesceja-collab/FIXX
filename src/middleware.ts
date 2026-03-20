@@ -1,42 +1,27 @@
-import { createServerClient } from "@supabase/ssr";
+import { jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_ROUTES = ["/login", "/registro", "/trial-expired"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const token = request.cookies.get("auth_token")?.value;
 
-  let supabaseResponse = NextResponse.next({ request });
+  let user = null;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
+  if (token) {
+    try {
+      const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
+      const { payload } = await jwtVerify(token, secret);
+      user = payload;
+    } catch {
+      // Invalid token
     }
-  );
-
-  // Refresh session token
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  }
 
   // --- Public routes: allow always ---
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r)) || pathname === "/") {
-    return supabaseResponse;
+    return NextResponse.next();
   }
 
   // --- Protected routes: require auth ---
@@ -46,16 +31,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  const response = NextResponse.next();
+
   // --- Security: add headers ---
-  supabaseResponse.headers.set("X-Frame-Options", "DENY");
-  supabaseResponse.headers.set("X-Content-Type-Options", "nosniff");
-  supabaseResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  supabaseResponse.headers.set(
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()"
   );
 
-  return supabaseResponse;
+  return response;
 }
 
 export const config = {

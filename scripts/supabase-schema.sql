@@ -1,112 +1,58 @@
 -- ============================================================
--- FIXX — Database Schema
+-- FIXX — Database Schema (Trial 7 Days logic)
 -- Run this in Supabase SQL Editor (supabase.com → SQL Editor)
 -- ============================================================
 
--- 1. Profiles (extends Supabase auth.users)
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
-  full_name TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL DEFAULT 'owner',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Tabla de perfiles de usuario
+create table profiles (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references auth.users(id) on delete cascade,
+    name text,
+    email text unique,
+    created_at timestamp with time zone default current_timestamp
 );
 
--- 2. Workshops (tenant/taller)
-CREATE TABLE IF NOT EXISTS public.workshops (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  owner_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Tabla de talleres de usuario
+create table workshops (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references auth.users(id) on delete cascade,
+    workshop_name text,
+    created_at timestamp with time zone default current_timestamp
 );
 
--- 3. Subscriptions (trial tracking)
-CREATE TABLE IF NOT EXISTS public.subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  workshop_id UUID REFERENCES public.workshops(id) ON DELETE CASCADE,
-  plan_name TEXT NOT NULL DEFAULT 'trial',
-  status TEXT NOT NULL DEFAULT 'trialing'
-    CHECK (status IN ('trialing', 'active', 'expired', 'suspended', 'archived')),
-  trial_starts_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '7 days'),
-  delete_after_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Tabla de suscripciones con lógica de trial
+create table subscriptions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references auth.users(id) on delete cascade,
+    trial_start_at timestamp with time zone default current_timestamp,
+    trial_end_at timestamp with time zone,
+    status text default 'trialing', -- 'trialing', 'active', 'expired'
+    created_at timestamp with time zone default current_timestamp
 );
 
--- 4. Audit logs (security events)
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  action TEXT NOT NULL,
-  metadata JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Tabla de logs de auditoría
+create table audit_logs (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references auth.users(id),
+    action text,
+    created_at timestamp with time zone default current_timestamp
 );
 
--- ============================================================
--- Row Level Security (RLS)
--- ============================================================
+-- Habilitar RLS (Row Level Security)
+alter table profiles enable row level security;
+alter table workshops enable row level security;
+alter table subscriptions enable row level security;
+alter table audit_logs enable row level security;
 
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.workshops ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+-- Crear las políticas de acceso a los datos
+create policy "Profiles can only access their own data" on profiles
+  for select using (user_id = auth.uid());
 
--- Profiles: users can only read/update their own profile
-CREATE POLICY "Users can view own profile"
-  ON public.profiles FOR SELECT
-  USING (auth.uid() = id);
+create policy "Workshops can only access their own data" on workshops
+  for select using (user_id = auth.uid());
 
-CREATE POLICY "Users can update own profile"
-  ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+create policy "Subscriptions can only access their own data" on subscriptions
+  for select using (user_id = auth.uid());
 
--- Service role can insert profiles (used during registration)
-CREATE POLICY "Service can insert profiles"
-  ON public.profiles FOR INSERT
-  WITH CHECK (auth.uid() = id);
-
--- Workshops: users see only their own workshops
-CREATE POLICY "Users can view own workshops"
-  ON public.workshops FOR SELECT
-  USING (owner_user_id = auth.uid());
-
-CREATE POLICY "Users can insert own workshops"
-  ON public.workshops FOR INSERT
-  WITH CHECK (owner_user_id = auth.uid());
-
-CREATE POLICY "Users can update own workshops"
-  ON public.workshops FOR UPDATE
-  USING (owner_user_id = auth.uid());
-
--- Subscriptions: users see only their own
-CREATE POLICY "Users can view own subscription"
-  ON public.subscriptions FOR SELECT
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Users can insert own subscription"
-  ON public.subscriptions FOR INSERT
-  WITH CHECK (user_id = auth.uid());
-
--- Audit logs: users can insert their own, read their own
-CREATE POLICY "Users can view own audit logs"
-  ON public.audit_logs FOR SELECT
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Users can insert audit logs"
-  ON public.audit_logs FOR INSERT
-  WITH CHECK (user_id = auth.uid());
-
--- ============================================================
--- Auto-expire trial subscriptions (optional cron)
--- Run this manually or set up a pg_cron job in Supabase
--- ============================================================
--- UPDATE public.subscriptions
--- SET status = 'expired',
---     updated_at = now(),
---     delete_after_at = now() + interval '30 days'
--- WHERE status = 'trialing'
---   AND trial_ends_at < now();
+create policy "Audit Logs can only access their own data" on audit_logs
+  for select using (user_id = auth.uid());
