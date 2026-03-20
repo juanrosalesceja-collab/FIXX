@@ -1,5 +1,5 @@
 -- ============================================================
--- FIXX — Supabase Schema Integration (Universal Version)
+-- FIXX — Supabase Schema (Auth.Users Reference & Trial logic)
 -- ============================================================
 
 -- Enable UUID extension
@@ -8,10 +8,10 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Tabla de perfiles de usuario
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID, -- References auth.users(id) in Supabase Auth environments
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT,
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT, -- Required for our custom bcrypt auth
+    password_hash TEXT, -- Needed for manual bcrypt auth
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS workshops (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tabla de suscripciones
+-- Tabla de suscripciones con lógica de trial
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
