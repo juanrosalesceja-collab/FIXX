@@ -1,4 +1,4 @@
-import { query } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, password } = body;
 
-    // --- Input validation ---
+    // --- 1. Input Validation ---
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email y contraseña son obligatorios." },
@@ -16,22 +16,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // --- 1. Find user ---
-    const result = await query(
-      "SELECT id, password_hash FROM profiles WHERE email = $1",
-      [email]
-    );
+    // --- 2. Find User ---
+    const { data: user, error: userError } = await supabase
+      .from("profiles")
+      .select("id, password_hash")
+      .eq("email", email)
+      .maybeSingle();
 
-    if (result.rowCount === 0) {
+    if (userError) throw userError;
+    if (!user) {
       return NextResponse.json(
         { error: "Credenciales inválidas." },
         { status: 401 }
       );
     }
 
-    const user = result.rows[0];
-
-    // --- 2. Verify password ---
+    // --- 3. Verify Password ---
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       return NextResponse.json(
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // --- 3. Generate JWT ---
+    // --- 4. Generate JWT session ---
     const token = jwt.sign(
       { userId: user.id, email },
       process.env.JWT_SECRET!,
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       { status: 200 }
     );
 
-    // Set cookie
+    // Set auth cookie
     response.cookies.set("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -65,10 +65,10 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Login error:", error);
     
-    // Check if the connection string is missing
-    if (!process.env.DATABASE_URL) {
+    // Check if configuration is missing
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       return NextResponse.json(
-        { error: "Error de configuración: DATABASE_URL no está definida en el servidor." },
+        { error: "Error: NEXT_PUBLIC_SUPABASE_URL no definida." },
         { status: 500 }
       );
     }

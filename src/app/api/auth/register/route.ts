@@ -1,4 +1,4 @@
-import { query } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -18,8 +18,14 @@ export async function POST(request: Request) {
     }
 
     // --- 2. Check if user already exists ---
-    const existingUser = await query("SELECT id FROM profiles WHERE email = $1", [email]);
-    if (existingUser.rowCount && existingUser.rowCount > 0) {
+    const { data: existingUser, error: checkError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+    if (existingUser) {
       return NextResponse.json(
         { error: "El correo ya está registrado." },
         { status: 400 }
@@ -30,35 +36,43 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // --- 4. Insert into profiles ---
-    // Note: user_id is optional to avoid Foreign Key failures if Supabase Auth isn't used.
-    const profileResult = await query(
-      "INSERT INTO profiles (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id",
-      [finalName, email, hashedPassword]
-    );
-    const userId = profileResult.rows[0].id;
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .insert([{ name: finalName, email, password_hash: hashedPassword }])
+      .select()
+      .single();
+
+    if (profileError) throw profileError;
+    const userId = profile.id;
 
     // --- 5. Create Workshop (if provided) ---
     if (tallerName) {
-      await query(
-        "INSERT INTO workshops (user_id, workshop_name) VALUES ($1, $2)",
-        [userId, tallerName]
-      );
+      await supabase
+        .from("workshops")
+        .insert([{ user_id: userId, workshop_name: tallerName }]);
     }
 
     // --- 6. Create Subscription (7-day trial) ---
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 7);
 
-    await query(
-      "INSERT INTO subscriptions (user_id, trial_start_at, trial_end_at, status) VALUES ($1, NOW(), $2, $3)",
-      [userId, trialEndDate.toISOString(), "trialing"]
-    );
+    const { error: subError } = await supabase
+      .from("subscriptions")
+      .insert([
+        {
+          user_id: userId,
+          trial_start_at: new Date().toISOString(),
+          trial_end_at: trialEndDate.toISOString(),
+          status: "trialing",
+        },
+      ]);
+    
+    if (subError) throw subError;
 
     // --- 7. Audit log ---
-    await query(
-      "INSERT INTO audit_logs (user_id, action) VALUES ($1, $2)",
-      [userId, "register"]
-    );
+    await supabase
+      .from("audit_logs")
+      .insert([{ user_id: userId, action: "register" }]);
 
     // --- 8. Generate JWT session ---
     const token = jwt.sign({ userId, email }, process.env.JWT_SECRET!, {
@@ -83,10 +97,10 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Registration error:", error);
     
-    // Check if the connection string is missing
-    if (!process.env.DATABASE_URL) {
+    // Check if configuration is missing
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       return NextResponse.json(
-        { error: "Error de configuración: DATABASE_URL no está definida en el servidor." },
+        { error: "Error: NEXT_PUBLIC_SUPABASE_URL no definida." },
         { status: 500 }
       );
     }
