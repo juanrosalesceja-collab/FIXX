@@ -49,10 +49,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 
 | Variable | Valor |
 |----------|-------|
+| `DATABASE_URL` | `postgresql://postgres:[password]@db.dveifluvdedonhpzdhvq.supabase.co:5432/postgres` |
+| `JWT_SECRET` | Una cadena secreta para firmar tokens (ej: `fixx-secret-2026`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://dveifluvdedonhpzdhvq.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Tu anon key |
 
-> Solo 2 variables. No se usa Prisma ni DATABASE_URL.
+> **IMPORTANTE**: La variable `DATABASE_URL` es obligatoria para que el sistema de registro y login funcione en Vercel. Asegúrate de reemplazar `[password]` con tu contraseña real de la base de datos de Supabase.
 
 ---
 

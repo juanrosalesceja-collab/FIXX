@@ -80,10 +80,19 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
+    
+    // Check if the connection string is missing
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { error: "Error de configuración: DATABASE_URL no está definida en el servidor." },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Error interno del servidor." },
+      { error: `Error del servidor: ${error.message || "Error desconocido"}` },
       { status: 500 }
     );
   }
