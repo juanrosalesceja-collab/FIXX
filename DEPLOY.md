@@ -144,3 +144,26 @@ revvio/
 │       ├── client.ts
 │       └── server.ts
 ```
+
+---
+
+## 🚀 Pasos Finales para Ti (2 Minutos)
+
+### 1. Variables en Vercel
+Asegúrate de que en tu panel de **Vercel** (Settings → Environment Variables) tengas estas 3 variables:
+
+- **NEXT_PUBLIC_SUPABASE_URL**: `https://dveifluvdedonhpzdhvq.supabase.co`
+- **NEXT_PUBLIC_SUPABASE_ANON_KEY**: (Tu llave anon de Supabase)
+- **JWT_SECRET**: `fixx-super-secret-key-2026`
+
+### 2. Redesplegar
+Ve a la pestaña **Deployments** en Vercel y dale a **Redeploy** al último commit ("Switch to Supabase JS client...").
+
+### 3. Probar Acceso
+Ahora podrás entrar en `https://fixx-kohl.vercel.app/login` con:
+
+- **Email**: `admin@fixx.app`
+- **Password**: `password123`
+*(Asegúrate de haber ejecutado el SQL de creación del usuario en Supabase).*
+
+> ⚠️ **Recordatorio SQL**: Si aún no lo has hecho, ejecuta `database.sql` en tu SQL Editor de Supabase para tener las tablas de `profiles` y `subscriptions` listas.
