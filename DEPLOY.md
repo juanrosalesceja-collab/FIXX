@@ -49,12 +49,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 
 | Variable | Valor |
 |----------|-------|
-| `DATABASE_URL` | `postgresql://postgres:[password]@db.dveifluvdedonhpzdhvq.supabase.co:5432/postgres` |
-| `JWT_SECRET` | Una cadena secreta para firmar tokens (ej: `fixx-secret-2026`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://dveifluvdedonhpzdhvq.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Tu anon key |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Tu anon key (de Supabase → Project Settings → API) |
+| `JWT_SECRET` | Una cadena secreta (ej: `fixx-secret-2026`) |
 
-> **IMPORTANTE**: La variable `DATABASE_URL` es obligatoria para que el sistema de registro y login funcione en Vercel. Asegúrate de reemplazar `[password]` con tu contraseña real de la base de datos de Supabase.
+> **IMPORTANTE**: Asegúrate de que las variables coincidan exactamente con las de tu proyecto de Supabase. Ya **no** se requiere `DATABASE_URL` para el funcionamiento básico, ya que ahora usamos el cliente oficial de Supabase JS.
 
 ---
 
@@ -150,20 +149,18 @@ revvio/
 ## 🚀 Pasos Finales para Ti (2 Minutos)
 
 ### 1. Variables en Vercel
-Asegúrate de que en tu panel de **Vercel** (Settings → Environment Variables) tengas estas 3 variables:
+Asegúrate de que en tu panel de **Vercel** (Settings → Environment Variables) tengas estas 3 variables correctamente configuradas:
 
 - **NEXT_PUBLIC_SUPABASE_URL**: `https://dveifluvdedonhpzdhvq.supabase.co`
 - **NEXT_PUBLIC_SUPABASE_ANON_KEY**: (Tu llave anon de Supabase)
-- **JWT_SECRET**: `fixx-super-secret-key-2026`
+- **JWT_SECRET**: (Cualquier clave secreta, por ejemplo: `fixx-super-secret-key-2026`)
 
 ### 2. Redesplegar
-Ve a la pestaña **Deployments** en Vercel y dale a **Redeploy** al último commit ("Switch to Supabase JS client...").
+Ve a la pestaña **Deployments** en Vercel y dale a **Redeploy** al último commit (o haz un `git push` con los cambios actuales).
 
 ### 3. Probar Acceso
-Ahora podrás entrar en `https://fixx-kohl.vercel.app/login` con:
-
-- **Email**: `admin@fixx.app`
-- **Password**: `password123`
-*(Asegúrate de haber ejecutado el SQL de creación del usuario en Supabase).*
+Una vez completado el deploy, ya deberías poder entrar en la URL de tu proyecto Vercel.
+- Si ves un error de "Supabase URL no definida", revisa el paso 1.
+- No olvides haber ejecutado los scripts SQL (`supabase-schema.sql`) para que las tablas existan.
 
 > ⚠️ **Recordatorio SQL**: Si aún no lo has hecho, ejecuta `database.sql` en tu SQL Editor de Supabase para tener las tablas de `profiles` y `subscriptions` listas.
