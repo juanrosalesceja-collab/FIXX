@@ -1,5 +1,5 @@
 import Sidebar from "@/components/layout/sidebar";
-import { query } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
@@ -28,12 +28,13 @@ export default async function DashboardLayout({
 
   // --- Trial check for authenticated users ---
   try {
-    const { rows } = await query(
-      "SELECT status, trial_end_at FROM subscriptions WHERE user_id = $1 LIMIT 1",
-      [userId]
-    );
+    const { data: subscription, error: subError } = await supabase
+      .from("subscriptions")
+      .select("status, trial_end_at")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    const subscription = rows[0];
+    if (subError) throw subError;
 
     if (subscription) {
       const isExpired =
@@ -44,10 +45,10 @@ export default async function DashboardLayout({
       if (isExpired) {
         // Update status to expired if it was still trialing
         if (subscription.status === "trialing") {
-          await query(
-            "UPDATE subscriptions SET status = 'expired' WHERE user_id = $1",
-            [userId]
-          );
+          await supabase
+            .from("subscriptions")
+            .update({ status: "expired" })
+            .eq("user_id", userId);
         }
 
         redirect("/trial-expired");
